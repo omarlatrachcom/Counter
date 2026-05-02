@@ -1,5 +1,6 @@
 package com.omarlatrach.counter
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -7,6 +8,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.media.MediaPlayer
 import android.os.Build
@@ -48,7 +50,6 @@ class WarmUpForegroundService : Service() {
     private lateinit var audioPlayer: WarmUpServiceAudioPlayer
 
     private var tickerJob: Job? = null
-    private var shutdownJob: Job? = null
     private var warmUpStartRealtimeMs = 0L
     private var countingStartRealtimeMs = 0L
     private var lockedWarmUpSeconds = 0
@@ -85,7 +86,6 @@ class WarmUpForegroundService : Service() {
 
     override fun onDestroy() {
         tickerJob?.cancel()
-        shutdownJob?.cancel()
         audioPlayer.release()
         serviceScope.cancel()
         super.onDestroy()
@@ -94,7 +94,6 @@ class WarmUpForegroundService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun startWarmUpSession() {
-        shutdownJob?.cancel()
         tickerJob?.cancel()
         audioPlayer.stopAll()
 
@@ -112,7 +111,7 @@ class WarmUpForegroundService : Service() {
         )
         WarmUpSessionStore.set(newState)
         startOrUpdateForeground(newState)
-        audioPlayer.startMusicLoop()
+        audioPlayer.startMusic()
 
         tickerJob = serviceScope.launch {
             while (isActive) {
@@ -137,7 +136,6 @@ class WarmUpForegroundService : Service() {
             return
         }
 
-        shutdownJob?.cancel()
         tickerJob?.cancel()
 
         lockedWarmUpSeconds = elapsedSecondsSince(warmUpStartRealtimeMs)
@@ -187,7 +185,6 @@ class WarmUpForegroundService : Service() {
     }
 
     private fun stopSession(resetToIdle: Boolean) {
-        shutdownJob?.cancel()
         tickerJob?.cancel()
         tickerJob = null
 
@@ -243,7 +240,7 @@ class WarmUpForegroundService : Service() {
             }
             isForegroundStarted = true
         } else {
-            notificationManager.notify(NOTIFICATION_ID, notification)
+            notifyIfAllowed(notification)
         }
     }
 
@@ -251,7 +248,20 @@ class WarmUpForegroundService : Service() {
         if (!isForegroundStarted) {
             return
         }
-        notificationManager.notify(NOTIFICATION_ID, buildNotification(state))
+        notifyIfAllowed(buildNotification(state))
+    }
+
+    private fun notifyIfAllowed(notification: Notification) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+
+        notificationManager.notify(NOTIFICATION_ID, notification)
     }
 
     private fun removeForegroundAndStop() {
@@ -386,7 +396,7 @@ private class WarmUpServiceAudioPlayer(
     private var musicPlayer: MediaPlayer? = null
     private var voicePlayer: MediaPlayer? = null
 
-    fun startMusicLoop() {
+    fun startMusic() {
         if (musicPlayer?.isPlaying == true) {
             return
         }

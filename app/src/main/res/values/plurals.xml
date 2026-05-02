@@ -1,0 +1,11 @@
+<resources>
+    <plurals name="rest_duration_hint_plural">
+        <item quantity="one">Rest time will be %1$d second.</item>
+        <item quantity="other">Rest time will be %1$d seconds.</item>
+    </plurals>
+
+    <plurals name="seconds_remaining_format_plural">
+        <item quantity="one">%1$d second remaining</item>
+        <item quantity="other">%1$d seconds remaining</item>
+    </plurals>
+</resources>

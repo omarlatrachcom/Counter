@@ -35,7 +35,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -45,6 +44,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -52,8 +53,10 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.omarlatrach.counter.ui.theme.CounterTheme
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import java.util.Locale
 
 private enum class CounterScreen {
     Home,
@@ -100,10 +103,6 @@ class MainActivity : ComponentActivity() {
 private fun CounterApp() {
     var currentScreen by rememberSaveable { mutableStateOf(CounterScreen.Home.name) }
     val screen = CounterScreen.valueOf(currentScreen)
-
-    BackHandler(enabled = screen != CounterScreen.Home) {
-        currentScreen = CounterScreen.Home.name
-    }
 
     Surface(modifier = Modifier.fillMaxSize()) {
         when (screen) {
@@ -193,7 +192,7 @@ private fun HomeButton(
 private fun CounterWorkoutScreen(
     onBack: () -> Unit,
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     val audioPlayer = remember(context) { WorkoutAudioPlayer(context.applicationContext) }
 
     DisposableEffect(audioPlayer) {
@@ -249,7 +248,11 @@ private fun CounterWorkoutScreen(
     val statusDetail = if (phase == WorkoutPhase.PAUSED) {
         activeStatusTitle
     } else {
-        stringResource(R.string.seconds_remaining_format, secondsRemaining)
+        pluralStringResource(
+            R.plurals.seconds_remaining_format_plural,
+            secondsRemaining,
+            secondsRemaining,
+        )
     }
 
     fun resetSession(
@@ -367,6 +370,15 @@ private fun CounterWorkoutScreen(
             resetSession(stopAudio = false)
         } catch (cancelled: CancellationException) {
             throw cancelled
+        }
+    }
+
+    BackHandler {
+        if (showSessionPanel) {
+            showCancelConfirmation = true
+        } else {
+            audioPlayer.stop()
+            onBack()
         }
     }
 
@@ -549,8 +561,9 @@ private fun CounterWorkoutScreen(
                         )
                         if (hasRest) {
                             Text(
-                                text = stringResource(
-                                    R.string.rest_duration_hint,
+                                text = pluralStringResource(
+                                    R.plurals.rest_duration_hint_plural,
+                                    repDurationSeconds / 2,
                                     repDurationSeconds / 2,
                                 ),
                                 style = MaterialTheme.typography.bodyMedium,
@@ -697,8 +710,8 @@ private fun CheckboxRow(
 private fun WarmUpCounterScreen(
     onBack: () -> Unit,
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val warmUpState by WarmUpSessionStore.state.collectAsState()
+    val context = LocalContext.current
+    val warmUpState by WarmUpSessionStore.state.collectAsStateWithLifecycle()
     val stage = warmUpState.stage
     val showBackButton = stage != WarmUpStage.COUNTING
     val showSummary = stage == WarmUpStage.COUNTING ||
@@ -708,6 +721,22 @@ private fun WarmUpCounterScreen(
         warmUpState.lockedWarmUpSeconds
     } else {
         warmUpState.warmUpElapsedSeconds
+    }
+
+    fun handleBackPress() {
+        if (showBackButton) {
+            if (stage == WarmUpStage.WARMING_UP ||
+                stage == WarmUpStage.STOPPED ||
+                stage == WarmUpStage.COMPLETED
+            ) {
+                WarmUpForegroundService.resetSession(context)
+            }
+        }
+        onBack()
+    }
+
+    BackHandler {
+        handleBackPress()
     }
 
     Scaffold(containerColor = WarmUpBackground) { innerPadding ->
@@ -720,15 +749,7 @@ private fun WarmUpCounterScreen(
         ) {
             if (showBackButton) {
                 TextButton(
-                    onClick = {
-                        if (stage == WarmUpStage.WARMING_UP ||
-                            stage == WarmUpStage.STOPPED ||
-                            stage == WarmUpStage.COMPLETED
-                        ) {
-                            WarmUpForegroundService.resetSession(context)
-                        }
-                        onBack()
-                    },
+                    onClick = ::handleBackPress,
                     modifier = Modifier.align(Alignment.TopStart),
                 ) {
                     Text(
@@ -933,29 +954,29 @@ private class WorkoutAudioPlayer(
 
 }
 
-fun countSoundResForValue(rep: Int): Int? = when (rep) {
-        1 -> R.raw.count_01
-        2 -> R.raw.count_02
-        3 -> R.raw.count_03
-        4 -> R.raw.count_04
-        5 -> R.raw.count_05
-        6 -> R.raw.count_06
-        7 -> R.raw.count_07
-        8 -> R.raw.count_08
-        9 -> R.raw.count_09
-        10 -> R.raw.count_10
-        11 -> R.raw.count_11
-        12 -> R.raw.count_12
-        13 -> R.raw.count_13
-        14 -> R.raw.count_14
-        15 -> R.raw.count_15
-        16 -> R.raw.count_16
-        17 -> R.raw.count_17
-        18 -> R.raw.count_18
-        19 -> R.raw.count_19
-        20 -> R.raw.count_20
-        else -> null
-    }
+internal fun countSoundResForValue(rep: Int): Int? = when (rep) {
+    1 -> R.raw.count_01
+    2 -> R.raw.count_02
+    3 -> R.raw.count_03
+    4 -> R.raw.count_04
+    5 -> R.raw.count_05
+    6 -> R.raw.count_06
+    7 -> R.raw.count_07
+    8 -> R.raw.count_08
+    9 -> R.raw.count_09
+    10 -> R.raw.count_10
+    11 -> R.raw.count_11
+    12 -> R.raw.count_12
+    13 -> R.raw.count_13
+    14 -> R.raw.count_14
+    15 -> R.raw.count_15
+    16 -> R.raw.count_16
+    17 -> R.raw.count_17
+    18 -> R.raw.count_18
+    19 -> R.raw.count_19
+    20 -> R.raw.count_20
+    else -> null
+}
 
 fun formatElapsedTime(totalSeconds: Int): String {
     val hours = totalSeconds / 3600
@@ -963,8 +984,8 @@ fun formatElapsedTime(totalSeconds: Int): String {
     val seconds = totalSeconds % 60
 
     return if (hours > 0) {
-        "%d:%02d:%02d".format(hours, minutes, seconds)
+        String.format(Locale.getDefault(), "%d:%02d:%02d", hours, minutes, seconds)
     } else {
-        "%02d:%02d".format(minutes, seconds)
+        String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
     }
 }
