@@ -16,9 +16,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -47,8 +49,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -62,6 +66,7 @@ private enum class CounterScreen {
     Home,
     Counter,
     WarmUpCounter,
+    SunTimer,
 }
 
 private enum class WorkoutPhase {
@@ -79,12 +84,24 @@ enum class WarmUpStage {
     COMPLETED,
 }
 
+private enum class SunTimerPhase {
+    IDLE,
+    RUNNING,
+    PAUSED,
+    COMPLETED,
+}
+
 private const val MinReps = 1
 private const val MaxReps = 20
 const val MaxWarmUpCountMinutes = 20
+private const val SunTimerDurationSeconds = 29 * 60
+private const val SunTimerFirstBeepElapsedSeconds = 15 * 60
+private const val SunTimerSecondBeepElapsedSeconds = 22 * 60
 
-private val HomeBackground = Color(0xFFC62828)
-private val WarmUpBackground = Color(0xFFF06292)
+private val HomeBackground = Color(0xFFB71C1C)
+private val WarmUpBackground = Color(0xFFAD1457)
+private val SunTimerBackground = Color(0xFFFBC02D)
+private val SunTimerContent = Color(0xFF1F1A00)
 private val DurationOptions = listOf(10, 30, 60)
 
 class MainActivity : ComponentActivity() {
@@ -109,6 +126,7 @@ private fun CounterApp() {
             CounterScreen.Home -> HomeScreen(
                 onCounterClick = { currentScreen = CounterScreen.Counter.name },
                 onWarmUpCounterClick = { currentScreen = CounterScreen.WarmUpCounter.name },
+                onSunTimerClick = { currentScreen = CounterScreen.SunTimer.name },
             )
 
             CounterScreen.Counter -> CounterWorkoutScreen(
@@ -116,6 +134,10 @@ private fun CounterApp() {
             )
 
             CounterScreen.WarmUpCounter -> WarmUpCounterScreen(
+                onBack = { currentScreen = CounterScreen.Home.name },
+            )
+
+            CounterScreen.SunTimer -> SunTimerScreen(
                 onBack = { currentScreen = CounterScreen.Home.name },
             )
         }
@@ -126,6 +148,7 @@ private fun CounterApp() {
 private fun HomeScreen(
     onCounterClick: () -> Unit,
     onWarmUpCounterClick: () -> Unit,
+    onSunTimerClick: () -> Unit,
 ) {
     Box(
         modifier = Modifier
@@ -144,12 +167,14 @@ private fun HomeScreen(
                 color = Color.White,
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
             )
             Spacer(modifier = Modifier.height(16.dp))
             Text(
                 text = stringResource(R.string.home_subtitle),
-                color = Color.White.copy(alpha = 0.9f),
+                color = Color.White,
                 style = MaterialTheme.typography.bodyLarge,
+                textAlign = TextAlign.Center,
             )
             Spacer(modifier = Modifier.height(32.dp))
             HomeButton(
@@ -160,6 +185,11 @@ private fun HomeScreen(
             HomeButton(
                 text = stringResource(R.string.warm_up_counter_button),
                 onClick = onWarmUpCounterClick,
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            HomeButton(
+                text = stringResource(R.string.sun_timer_button),
+                onClick = onSunTimerClick,
             )
         }
     }
@@ -174,7 +204,7 @@ private fun HomeButton(
         onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
-            .height(56.dp),
+            .heightIn(min = 56.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = Color.White,
             contentColor = HomeBackground,
@@ -230,30 +260,31 @@ private fun CounterWorkoutScreen(
         else -> null
     }
 
-    val activeStatusTitle = when (activePhase) {
-        WorkoutPhase.REP -> stringResource(R.string.rep_status_title, currentRep, repCountForStatus)
-        WorkoutPhase.REST -> stringResource(
-            R.string.rest_status_title,
-            (currentRep + 1).coerceAtMost(repCountForStatus),
-        )
-        else -> stringResource(R.string.counter_title)
+    val repProgressLabel = when (activePhase) {
+        WorkoutPhase.REST -> stringResource(R.string.next_rep_progress_label)
+        else -> stringResource(R.string.rep_progress_label)
     }
-
-    val statusTitle = if (phase == WorkoutPhase.PAUSED) {
+    val repProgressValue = stringResource(
+        R.string.rep_progress_value_format,
+        when (activePhase) {
+            WorkoutPhase.REST -> (currentRep + 1).coerceAtMost(repCountForStatus)
+            else -> currentRep.coerceAtLeast(1)
+        },
+        repCountForStatus.coerceAtLeast(1),
+    )
+    val controlPanelTitle = if (phase == WorkoutPhase.PAUSED) {
         stringResource(R.string.paused_status_title)
     } else {
-        activeStatusTitle
+        when (activePhase) {
+            WorkoutPhase.REST -> stringResource(R.string.rest_status_label)
+            else -> stringResource(R.string.rep_progress_label)
+        }
     }
 
-    val statusDetail = if (phase == WorkoutPhase.PAUSED) {
-        activeStatusTitle
-    } else {
-        pluralStringResource(
-            R.plurals.seconds_remaining_format_plural,
-            secondsRemaining,
-            secondsRemaining,
-        )
-    }
+    val secondsRemainingLabel = pluralStringResource(
+        R.plurals.seconds_remaining_label_plural,
+        secondsRemaining,
+    )
 
     fun resetSession(
         stopAudio: Boolean = true,
@@ -409,33 +440,21 @@ private fun CounterWorkoutScreen(
             if (showSessionPanel) {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    color = Color.White.copy(alpha = 0.16f),
+                    color = Color.White.copy(alpha = 0.2f),
                     shape = MaterialTheme.shapes.extraLarge,
                 ) {
                     Column(
-                        modifier = Modifier.padding(20.dp),
+                        modifier = Modifier.padding(18.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Text(
-                            text = statusTitle,
+                            text = controlPanelTitle,
                             color = Color.White,
-                            style = MaterialTheme.typography.headlineSmall,
+                            style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = statusDetail,
-                            color = Color.White.copy(alpha = 0.92f),
-                            style = MaterialTheme.typography.bodyLarge,
+                            textAlign = TextAlign.Center,
                         )
                         Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = stringResource(R.string.timer_seconds_format, secondsRemaining),
-                            color = Color.White,
-                            fontSize = 42.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                        )
-                        Spacer(modifier = Modifier.height(24.dp))
                         Button(
                             onClick = {
                                 if (phase == WorkoutPhase.PAUSED) {
@@ -446,7 +465,7 @@ private fun CounterWorkoutScreen(
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(52.dp),
+                                .heightIn(min = 52.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Color.White,
                                 contentColor = HomeBackground,
@@ -469,7 +488,7 @@ private fun CounterWorkoutScreen(
                             onClick = { showCancelConfirmation = true },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(52.dp),
+                                .heightIn(min = 52.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Color.White.copy(alpha = 0.18f),
                                 contentColor = Color.White,
@@ -483,10 +502,43 @@ private fun CounterWorkoutScreen(
                         }
                     }
                 }
+                Spacer(modifier = Modifier.height(18.dp))
+                LargeTimerDisplay(
+                    label = repProgressLabel,
+                    value = repProgressValue,
+                    contentColor = Color.White,
+                    fontSize = 82.sp,
+                    lineHeight = 88.sp,
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        text = secondsRemaining.toString(),
+                        color = Color.White,
+                        style = MaterialTheme.typography.displayLarge.copy(
+                            fontSize = 174.sp,
+                            lineHeight = 176.sp,
+                        ),
+                        fontWeight = FontWeight.ExtraBold,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = secondsRemainingLabel,
+                        color = Color.White,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                    )
+                }
             } else {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    color = Color.White.copy(alpha = 0.12f),
+                    color = Color.White.copy(alpha = 0.18f),
                     shape = MaterialTheme.shapes.extraLarge,
                 ) {
                     Column(
@@ -503,15 +555,19 @@ private fun CounterWorkoutScreen(
                             modifier = Modifier.fillMaxWidth(),
                             enabled = !isRunning,
                             singleLine = true,
+                            textStyle = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.SemiBold,
+                            ),
                             label = { Text(text = stringResource(R.string.reps_label)) },
                             supportingText = {
                                 Text(
                                     text = repsError ?: stringResource(R.string.reps_support_text),
                                     color = if (repsError == null) {
-                                        Color.White.copy(alpha = 0.82f)
+                                        Color.White
                                     } else {
                                         Color(0xFFFFE0E0)
                                     },
+                                    style = MaterialTheme.typography.bodyMedium,
                                 )
                             },
                             isError = repsError != null,
@@ -522,10 +578,10 @@ private fun CounterWorkoutScreen(
                                 disabledTextColor = Color.White.copy(alpha = 0.65f),
                                 cursorColor = Color.White,
                                 focusedBorderColor = Color.White,
-                                unfocusedBorderColor = Color.White.copy(alpha = 0.8f),
+                                unfocusedBorderColor = Color.White,
                                 disabledBorderColor = Color.White.copy(alpha = 0.4f),
                                 focusedLabelColor = Color.White,
-                                unfocusedLabelColor = Color.White.copy(alpha = 0.9f),
+                                unfocusedLabelColor = Color.White,
                                 disabledLabelColor = Color.White.copy(alpha = 0.5f),
                                 errorBorderColor = Color(0xFFFFE0E0),
                                 errorLabelColor = Color(0xFFFFE0E0),
@@ -567,7 +623,7 @@ private fun CounterWorkoutScreen(
                                     repDurationSeconds / 2,
                                 ),
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = Color.White.copy(alpha = 0.82f),
+                                color = Color.White,
                             )
                         }
                     }
@@ -577,7 +633,7 @@ private fun CounterWorkoutScreen(
                     onClick = { startSession() },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(52.dp),
+                        .heightIn(min = 52.dp),
                     enabled = repsError == null,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color.White,
@@ -625,24 +681,27 @@ private fun DurationSelector(
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         DurationButton(
             duration = DurationOptions[0],
             selectedDuration = selectedDuration,
             enabled = enabled,
+            modifier = Modifier.weight(1f),
             onSelect = onSelect,
         )
         DurationButton(
             duration = DurationOptions[1],
             selectedDuration = selectedDuration,
             enabled = enabled,
+            modifier = Modifier.weight(1f),
             onSelect = onSelect,
         )
         DurationButton(
             duration = DurationOptions[2],
             selectedDuration = selectedDuration,
             enabled = enabled,
+            modifier = Modifier.weight(1f),
             onSelect = onSelect,
         )
     }
@@ -653,15 +712,14 @@ private fun DurationButton(
     duration: Int,
     selectedDuration: Int,
     enabled: Boolean,
+    modifier: Modifier = Modifier,
     onSelect: (Int) -> Unit,
 ) {
     val selected = duration == selectedDuration
 
     Button(
         onClick = { onSelect(duration) },
-        modifier = Modifier
-            .widthIn(min = 76.dp)
-            .height(44.dp),
+        modifier = modifier.heightIn(min = 48.dp),
         enabled = enabled,
         colors = ButtonDefaults.buttonColors(
             containerColor = if (selected) Color.White else Color.White.copy(alpha = 0.14f),
@@ -670,6 +728,7 @@ private fun DurationButton(
     ) {
         Text(
             text = stringResource(R.string.duration_option_format, duration),
+            style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
         )
     }
@@ -683,12 +742,20 @@ private fun CheckboxRow(
     onCheckedChange: (Boolean) -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .toggleable(
+                value = checked,
+                enabled = enabled,
+                role = Role.Checkbox,
+                onValueChange = onCheckedChange,
+            ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Checkbox(
             checked = checked,
-            onCheckedChange = onCheckedChange,
+            onCheckedChange = null,
             enabled = enabled,
             colors = CheckboxDefaults.colors(
                 checkedColor = Color.White,
@@ -700,6 +767,7 @@ private fun CheckboxRow(
         )
         Text(
             text = label,
+            modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.bodyLarge,
             color = Color.White,
         )
@@ -721,6 +789,19 @@ private fun WarmUpCounterScreen(
         warmUpState.lockedWarmUpSeconds
     } else {
         warmUpState.warmUpElapsedSeconds
+    }
+    val hasTimerTime = warmUpState.countingElapsedSeconds > 0 ||
+        stage == WarmUpStage.COUNTING ||
+        stage == WarmUpStage.COMPLETED
+    val primarySummaryLabel = if (hasTimerTime) {
+        stringResource(R.string.counting_time_label)
+    } else {
+        stringResource(R.string.warm_up_time_label)
+    }
+    val primarySummaryValue = if (hasTimerTime) {
+        formatElapsedTime(warmUpState.countingElapsedSeconds)
+    } else {
+        formatElapsedTime(displayedWarmUpSeconds)
     }
 
     fun handleBackPress() {
@@ -779,7 +860,7 @@ private fun WarmUpCounterScreen(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(56.dp),
+                        .heightIn(min = 56.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color.White,
                         contentColor = WarmUpBackground,
@@ -806,8 +887,15 @@ private fun WarmUpCounterScreen(
                     Spacer(modifier = Modifier.height(14.dp))
                     Text(
                         text = stringResource(R.string.warm_up_music_running_hint),
-                        color = Color.White.copy(alpha = 0.92f),
+                        color = Color.White,
                         style = MaterialTheme.typography.bodyLarge,
+                        textAlign = TextAlign.Center,
+                    )
+                    Spacer(modifier = Modifier.height(34.dp))
+                    LargeTimerDisplay(
+                        label = stringResource(R.string.warm_up_time_label),
+                        value = formatElapsedTime(displayedWarmUpSeconds),
+                        contentColor = Color.White,
                     )
                 }
             }
@@ -817,11 +905,11 @@ private fun WarmUpCounterScreen(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth(),
-                    color = Color.White.copy(alpha = 0.16f),
+                    color = Color.White.copy(alpha = 0.2f),
                     shape = MaterialTheme.shapes.extraLarge,
                 ) {
                     Column(
-                        modifier = Modifier.padding(20.dp),
+                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Text(
@@ -835,17 +923,21 @@ private fun WarmUpCounterScreen(
                             color = Color.White,
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold,
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        WarmUpSummaryRow(
-                            label = stringResource(R.string.warm_up_time_label),
-                            value = formatElapsedTime(displayedWarmUpSeconds),
+                            textAlign = TextAlign.Center,
                         )
                         Spacer(modifier = Modifier.height(10.dp))
-                        WarmUpSummaryRow(
-                            label = stringResource(R.string.counting_time_label),
-                            value = formatElapsedTime(warmUpState.countingElapsedSeconds),
+                        LargeTimerDisplay(
+                            label = primarySummaryLabel,
+                            value = primarySummaryValue,
+                            contentColor = Color.White,
                         )
+                        if (hasTimerTime) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            WarmUpSummaryRow(
+                                label = stringResource(R.string.warm_up_time_label),
+                                value = formatElapsedTime(displayedWarmUpSeconds),
+                            )
+                        }
                         if (stage == WarmUpStage.COUNTING) {
                             Spacer(modifier = Modifier.height(12.dp))
                             Text(
@@ -856,6 +948,7 @@ private fun WarmUpCounterScreen(
                                 ),
                                 color = Color.White.copy(alpha = 0.92f),
                                 style = MaterialTheme.typography.bodyMedium,
+                                textAlign = TextAlign.Center,
                             )
                         }
                     }
@@ -877,7 +970,10 @@ private fun WarmUpSummaryRow(
     ) {
         Text(
             text = label,
-            color = Color.White.copy(alpha = 0.92f),
+            modifier = Modifier
+                .weight(1f)
+                .padding(end = 12.dp),
+            color = Color.White,
             style = MaterialTheme.typography.bodyLarge,
         )
         Text(
@@ -885,6 +981,308 @@ private fun WarmUpSummaryRow(
             color = Color.White,
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.End,
+        )
+    }
+}
+
+@Composable
+private fun LargeTimerDisplay(
+    label: String,
+    value: String,
+    contentColor: Color,
+    fontSize: androidx.compose.ui.unit.TextUnit = 112.sp,
+    lineHeight: androidx.compose.ui.unit.TextUnit = 116.sp,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = label,
+            color = contentColor,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = value,
+            color = contentColor,
+            style = MaterialTheme.typography.displayLarge.copy(
+                fontSize = fontSize,
+                lineHeight = lineHeight,
+            ),
+            fontWeight = FontWeight.ExtraBold,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun SunTimerScreen(
+    onBack: () -> Unit,
+) {
+    val context = LocalContext.current
+    val audioPlayer = remember(context) { SunTimerAudioPlayer(context.applicationContext) }
+
+    DisposableEffect(audioPlayer) {
+        onDispose {
+            audioPlayer.release()
+        }
+    }
+
+    var phaseName by rememberSaveable { mutableStateOf(SunTimerPhase.IDLE.name) }
+    var secondsRemaining by rememberSaveable { mutableIntStateOf(SunTimerDurationSeconds) }
+    var firstBeepPlayed by rememberSaveable { mutableStateOf(false) }
+    var secondBeepPlayed by rememberSaveable { mutableStateOf(false) }
+    var showCancelConfirmation by rememberSaveable { mutableStateOf(false) }
+    var runToken by rememberSaveable { mutableIntStateOf(0) }
+
+    val phase = SunTimerPhase.valueOf(phaseName)
+    val timerActive = phase == SunTimerPhase.RUNNING || phase == SunTimerPhase.PAUSED
+    val timerTitle = when (phase) {
+        SunTimerPhase.RUNNING -> stringResource(R.string.sun_timer_running_title)
+        SunTimerPhase.PAUSED -> stringResource(R.string.paused_status_title)
+        SunTimerPhase.COMPLETED -> stringResource(R.string.sun_timer_completed_title)
+        SunTimerPhase.IDLE -> stringResource(R.string.sun_timer_title)
+    }
+
+    fun resetTimer() {
+        audioPlayer.stopAll()
+        secondsRemaining = SunTimerDurationSeconds
+        firstBeepPlayed = false
+        secondBeepPlayed = false
+        showCancelConfirmation = false
+        phaseName = SunTimerPhase.IDLE.name
+    }
+
+    fun startTimer() {
+        audioPlayer.stopAll()
+        secondsRemaining = SunTimerDurationSeconds
+        firstBeepPlayed = false
+        secondBeepPlayed = false
+        showCancelConfirmation = false
+        phaseName = SunTimerPhase.RUNNING.name
+        audioPlayer.startMusic()
+        runToken += 1
+    }
+
+    fun pauseTimer() {
+        if (phase != SunTimerPhase.RUNNING) {
+            return
+        }
+
+        audioPlayer.pauseAll()
+        phaseName = SunTimerPhase.PAUSED.name
+    }
+
+    fun resumeTimer() {
+        if (phase != SunTimerPhase.PAUSED) {
+            return
+        }
+
+        audioPlayer.resumeAll()
+        phaseName = SunTimerPhase.RUNNING.name
+        runToken += 1
+    }
+
+    fun handleBackPress() {
+        if (timerActive) {
+            showCancelConfirmation = true
+        } else {
+            audioPlayer.stopAll()
+            onBack()
+        }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(phaseName, runToken) {
+        if (phase != SunTimerPhase.RUNNING) {
+            return@LaunchedEffect
+        }
+
+        try {
+            audioPlayer.resumeAll()
+            while (secondsRemaining > 0) {
+                delay(1000)
+                secondsRemaining -= 1
+
+                val elapsedSeconds = SunTimerDurationSeconds - secondsRemaining
+                if (!firstBeepPlayed && elapsedSeconds >= SunTimerFirstBeepElapsedSeconds) {
+                    firstBeepPlayed = true
+                    audioPlayer.playBeep()
+                }
+                if (!secondBeepPlayed && elapsedSeconds >= SunTimerSecondBeepElapsedSeconds) {
+                    secondBeepPlayed = true
+                    audioPlayer.playBeep()
+                }
+            }
+
+            if (secondsRemaining == 0 && phaseName == SunTimerPhase.RUNNING.name) {
+                audioPlayer.stopMusic()
+                audioPlayer.playFinished()
+                phaseName = SunTimerPhase.COMPLETED.name
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        }
+    }
+
+    BackHandler {
+        handleBackPress()
+    }
+
+    Scaffold(containerColor = SunTimerBackground) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .background(SunTimerBackground)
+                .padding(horizontal = 24.dp, vertical = 20.dp),
+        ) {
+            TextButton(
+                onClick = ::handleBackPress,
+                modifier = Modifier.align(Alignment.TopStart),
+            ) {
+                Text(
+                    text = stringResource(R.string.back_button),
+                    color = SunTimerContent,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+
+            Column(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = stringResource(R.string.sun_timer_title),
+                    color = SunTimerContent,
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = Color.White.copy(alpha = 0.58f),
+                    shape = MaterialTheme.shapes.extraLarge,
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text(
+                            text = timerTitle,
+                            color = SunTimerContent,
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        LargeTimerDisplay(
+                            label = stringResource(R.string.sun_timer_remaining_label),
+                            value = formatElapsedTime(secondsRemaining),
+                            contentColor = SunTimerContent,
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        if (timerActive) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                Button(
+                                    onClick = {
+                                        if (phase == SunTimerPhase.PAUSED) {
+                                            resumeTimer()
+                                        } else {
+                                            pauseTimer()
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .heightIn(min = 52.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = SunTimerContent,
+                                        contentColor = SunTimerBackground,
+                                    ),
+                                ) {
+                                    Text(
+                                        text = stringResource(
+                                            if (phase == SunTimerPhase.PAUSED) {
+                                                R.string.resume_button
+                                            } else {
+                                                R.string.stop_button
+                                            },
+                                        ),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                }
+                                Button(
+                                    onClick = { showCancelConfirmation = true },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .heightIn(min = 52.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color.White.copy(alpha = 0.68f),
+                                        contentColor = SunTimerContent,
+                                    ),
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.cancel_button),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                }
+                            }
+                        } else {
+                            Button(
+                                onClick = { startTimer() },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 56.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = SunTimerContent,
+                                    contentColor = SunTimerBackground,
+                                ),
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.sun_timer_start_button),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showCancelConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showCancelConfirmation = false },
+            title = { Text(text = stringResource(R.string.sun_timer_cancel_dialog_title)) },
+            text = { Text(text = stringResource(R.string.sun_timer_cancel_dialog_message)) },
+            confirmButton = {
+                TextButton(
+                    onClick = { resetTimer() },
+                ) {
+                    Text(text = stringResource(R.string.sun_timer_confirm_cancel_button))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showCancelConfirmation = false },
+                ) {
+                    Text(text = stringResource(R.string.keep_counting_button))
+                }
+            },
         )
     }
 }
@@ -896,6 +1294,7 @@ private fun CounterAppPreview() {
         HomeScreen(
             onCounterClick = {},
             onWarmUpCounterClick = {},
+            onSunTimerClick = {},
         )
     }
 }
@@ -952,6 +1351,127 @@ private class WorkoutAudioPlayer(
         }
     }
 
+}
+
+private class SunTimerAudioPlayer(
+    private val context: Context,
+) {
+    private var musicPlayer: MediaPlayer? = null
+    private var effectPlayer: MediaPlayer? = null
+    private var musicWasPaused = false
+    private var effectWasPaused = false
+
+    fun startMusic() {
+        stopMusic()
+        musicPlayer = MediaPlayer.create(context, R.raw.music_2)?.apply {
+            setVolume(0.32f, 0.32f)
+            setLooping(true)
+            setOnCompletionListener { completedPlayer ->
+                if (musicPlayer === completedPlayer) {
+                    musicPlayer = null
+                }
+                completedPlayer.release()
+            }
+            start()
+        }
+        musicWasPaused = false
+    }
+
+    fun playBeep() {
+        playEffect(R.raw.beep)
+    }
+
+    fun playFinished() {
+        playEffect(R.raw.finished)
+    }
+
+    fun pauseAll() {
+        musicPlayer?.let { player ->
+            musicWasPaused = runCatching {
+                if (player.isPlaying) {
+                    player.pause()
+                    true
+                } else {
+                    false
+                }
+            }.getOrDefault(false)
+        }
+        effectPlayer?.let { player ->
+            effectWasPaused = runCatching {
+                if (player.isPlaying) {
+                    player.pause()
+                    true
+                } else {
+                    false
+                }
+            }.getOrDefault(false)
+        }
+    }
+
+    fun resumeAll() {
+        if (musicWasPaused) {
+            musicPlayer?.start()
+            musicWasPaused = false
+        } else if (musicPlayer == null) {
+            startMusic()
+        }
+
+        if (effectWasPaused) {
+            effectPlayer?.start()
+            effectWasPaused = false
+        }
+    }
+
+    fun stopMusic() {
+        musicPlayer?.let { player ->
+            player.setOnCompletionListener(null)
+            runCatching {
+                if (player.isPlaying) {
+                    player.stop()
+                }
+            }
+            player.release()
+        }
+        musicPlayer = null
+        musicWasPaused = false
+    }
+
+    fun stopAll() {
+        stopMusic()
+        stopEffect()
+    }
+
+    fun release() {
+        stopAll()
+    }
+
+    private fun playEffect(resId: Int) {
+        stopEffect()
+        effectPlayer = MediaPlayer.create(context, resId)?.apply {
+            setOnCompletionListener { completedPlayer ->
+                if (effectPlayer === completedPlayer) {
+                    effectPlayer = null
+                }
+                completedPlayer.release()
+            }
+            start()
+        }
+        effectWasPaused = false
+    }
+
+    private fun stopEffect() {
+        effectPlayer?.let { player ->
+            player.setOnCompletionListener(null)
+            runCatching {
+                if (player.isPlaying) {
+                    player.stop()
+                }
+            }
+            player.release()
+        }
+        effectPlayer = null
+        effectWasPaused = false
+    }
 }
 
 internal fun countSoundResForValue(rep: Int): Int? = when (rep) {

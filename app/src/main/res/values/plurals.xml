@@ -8,4 +8,9 @@
         <item quantity="one">%1$d second remaining</item>
         <item quantity="other">%1$d seconds remaining</item>
     </plurals>
+
+    <plurals name="seconds_remaining_label_plural">
+        <item quantity="one">second remaining</item>
+        <item quantity="other">seconds remaining</item>
+    </plurals>
 </resources>
