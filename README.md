@@ -2,10 +2,11 @@
 
 An Android workout timer app built with Kotlin and Jetpack Compose.
 
-The app currently includes two main flows:
+The app currently includes three main flows:
 
 - `Counter`: a rep-based counter with optional voice counting, optional rest between reps, and a finish sound.
-- `Warm Up Counter`: a music-backed warm-up flow that can transition into a long-running spoken minute counter.
+- `Warm Up Timer`: a music-backed warm-up flow that can transition into a long-running spoken minute timer.
+- `Sun Timer`: a 29-minute music-backed countdown with milestone beeps.
 
 ## Features
 
@@ -21,16 +22,25 @@ The app currently includes two main flows:
 - `finished.mp3` when the set is complete
 - Pause/resume and cancel support during a running set
 
-### Warm Up Counter
+### Warm Up Timer
 
 - Pink dedicated screen
 - `Start Warm Up` begins background music and a silent warm-up timer
-- `Start Counter` freezes the warm-up time and starts the real counter
+- `Start Timer` freezes the warm-up time and starts the real timer
 - Spoken minute announcements at the end of each minute
 - At minute `20`, the app plays `finished.mp3` instead of `count_20.mp3`
 - After minute `20`, the timer continues until the user presses `Stop`
 - If the music track ends first, the session stops automatically and keeps the measured times
 - Uses a foreground service so the warm-up flow is more reliable during long runs
+
+### Sun Timer
+
+- Yellow dedicated screen
+- `Start Timer` begins a 29-minute countdown and plays `music_2.mp3`
+- Plays `beep.wav` after 15 and 22 minutes from the start
+- Plays `finished.mp3` when the timer reaches zero, then stops the music
+- Stop/resume pauses and resumes both the timer and music
+- Cancel asks for confirmation before stopping the timer and music
 
 ## Audio Files
 
@@ -44,6 +54,7 @@ Current filenames used by the app:
 - `beep.wav`
 - `finished.mp3`
 - `music.mp3`
+- `music_2.mp3`
 
 Android resource naming rules matter:
 
