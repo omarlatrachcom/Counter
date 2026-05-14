@@ -93,16 +93,33 @@ private enum class SunTimerPhase {
 
 private const val MinReps = 1
 private const val MaxReps = 20
-const val MaxWarmUpCountMinutes = 20
-private const val SunTimerDurationSeconds = 29 * 60
-private const val SunTimerFirstBeepElapsedSeconds = 15 * 60
-private const val SunTimerSecondBeepElapsedSeconds = 22 * 60
+private const val MinCustomDurationMinutes = 1
+private const val MaxCustomDurationMinutes = 6
+const val WarmUpFinishSoundSeconds = 5 * 60
 
 private val HomeBackground = Color(0xFFB71C1C)
 private val WarmUpBackground = Color(0xFFAD1457)
 private val SunTimerBackground = Color(0xFFFBC02D)
 private val SunTimerContent = Color(0xFF1F1A00)
 private val DurationOptions = listOf(10, 30, 60)
+private val SunTimerOptions = listOf(
+    SunTimerOption(
+        durationSeconds = 29 * 60,
+        firstBeepElapsedSeconds = 15 * 60,
+        secondBeepElapsedSeconds = 22 * 60,
+    ),
+    SunTimerOption(
+        durationSeconds = 20 * 60,
+        firstBeepElapsedSeconds = 10 * 60,
+        secondBeepElapsedSeconds = 15 * 60,
+    ),
+)
+
+private data class SunTimerOption(
+    val durationSeconds: Int,
+    val firstBeepElapsedSeconds: Int,
+    val secondBeepElapsedSeconds: Int,
+)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -233,6 +250,7 @@ private fun CounterWorkoutScreen(
 
     var repsInput by rememberSaveable { mutableStateOf("1") }
     var repDurationSeconds by rememberSaveable { mutableIntStateOf(DurationOptions.first()) }
+    var customMinutesInput by rememberSaveable { mutableStateOf("") }
     var silentCounting by rememberSaveable { mutableStateOf(false) }
     var hasRest by rememberSaveable { mutableStateOf(false) }
     var isRunning by rememberSaveable { mutableStateOf(false) }
@@ -252,11 +270,20 @@ private fun CounterWorkoutScreen(
     }
     val parsedReps = repsInput.toIntOrNull()
     val selectedReps = parsedReps?.takeIf { it in MinReps..MaxReps }
+    val parsedCustomMinutes = customMinutesInput.toIntOrNull()
     val repCountForStatus = selectedReps ?: parsedReps?.coerceIn(MinReps, MaxReps) ?: 0
     val repsError = when {
         repsInput.isBlank() -> stringResource(R.string.reps_required_error)
         parsedReps == null -> stringResource(R.string.reps_required_error)
         parsedReps !in MinReps..MaxReps -> stringResource(R.string.reps_range_error)
+        else -> null
+    }
+    val customMinutesError = when {
+        customMinutesInput.isBlank() -> null
+        parsedCustomMinutes == null -> stringResource(R.string.custom_duration_minutes_required_error)
+        parsedCustomMinutes !in MinCustomDurationMinutes..MaxCustomDurationMinutes -> {
+            stringResource(R.string.custom_duration_minutes_range_error)
+        }
         else -> null
     }
 
@@ -281,6 +308,26 @@ private fun CounterWorkoutScreen(
         }
     }
 
+    val counterTextFieldColors = OutlinedTextFieldDefaults.colors(
+        focusedTextColor = Color.White,
+        unfocusedTextColor = Color.White,
+        disabledTextColor = Color.White.copy(alpha = 0.65f),
+        cursorColor = Color.White,
+        focusedBorderColor = Color.White,
+        unfocusedBorderColor = Color.White,
+        disabledBorderColor = Color.White.copy(alpha = 0.4f),
+        focusedLabelColor = Color.White,
+        unfocusedLabelColor = Color.White,
+        disabledLabelColor = Color.White.copy(alpha = 0.5f),
+        errorBorderColor = Color(0xFFFFE0E0),
+        errorLabelColor = Color(0xFFFFE0E0),
+        errorCursorColor = Color.White,
+        focusedContainerColor = Color.Transparent,
+        unfocusedContainerColor = Color.Transparent,
+        disabledContainerColor = Color.Transparent,
+        errorContainerColor = Color.Transparent,
+    )
+
     val secondsRemainingLabel = pluralStringResource(
         R.plurals.seconds_remaining_label_plural,
         secondsRemaining,
@@ -302,7 +349,7 @@ private fun CounterWorkoutScreen(
     }
 
     fun startSession() {
-        if (selectedReps == null) {
+        if (selectedReps == null || customMinutesError != null) {
             return
         }
 
@@ -572,25 +619,7 @@ private fun CounterWorkoutScreen(
                             },
                             isError = repsError != null,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White,
-                                disabledTextColor = Color.White.copy(alpha = 0.65f),
-                                cursorColor = Color.White,
-                                focusedBorderColor = Color.White,
-                                unfocusedBorderColor = Color.White,
-                                disabledBorderColor = Color.White.copy(alpha = 0.4f),
-                                focusedLabelColor = Color.White,
-                                unfocusedLabelColor = Color.White,
-                                disabledLabelColor = Color.White.copy(alpha = 0.5f),
-                                errorBorderColor = Color(0xFFFFE0E0),
-                                errorLabelColor = Color(0xFFFFE0E0),
-                                errorCursorColor = Color.White,
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent,
-                                disabledContainerColor = Color.Transparent,
-                                errorContainerColor = Color.Transparent,
-                            ),
+                            colors = counterTextFieldColors,
                         )
                         Text(
                             text = stringResource(R.string.rep_duration_label),
@@ -601,7 +630,47 @@ private fun CounterWorkoutScreen(
                         DurationSelector(
                             selectedDuration = repDurationSeconds,
                             enabled = !isRunning,
-                            onSelect = { repDurationSeconds = it },
+                            onSelect = {
+                                repDurationSeconds = it
+                                customMinutesInput = ""
+                            },
+                        )
+                        OutlinedTextField(
+                            value = customMinutesInput,
+                            onValueChange = { newValue ->
+                                if (newValue.length <= 1 && newValue.all { it.isDigit() }) {
+                                    customMinutesInput = newValue
+                                    val customMinutes = newValue.toIntOrNull()
+                                    if (
+                                        customMinutes != null &&
+                                        customMinutes in MinCustomDurationMinutes..MaxCustomDurationMinutes
+                                    ) {
+                                        repDurationSeconds = customMinutes * 60
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !isRunning,
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.SemiBold,
+                            ),
+                            label = { Text(text = stringResource(R.string.custom_duration_minutes_label)) },
+                            supportingText = {
+                                Text(
+                                    text = customMinutesError
+                                        ?: stringResource(R.string.custom_duration_minutes_support_text),
+                                    color = if (customMinutesError == null) {
+                                        Color.White
+                                    } else {
+                                        Color(0xFFFFE0E0)
+                                    },
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                            },
+                            isError = customMinutesError != null,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            colors = counterTextFieldColors,
                         )
                         CheckboxRow(
                             checked = silentCounting,
@@ -634,7 +703,7 @@ private fun CounterWorkoutScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 52.dp),
-                    enabled = repsError == null,
+                    enabled = repsError == null && customMinutesError == null,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color.White,
                         contentColor = HomeBackground,
@@ -683,27 +752,15 @@ private fun DurationSelector(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        DurationButton(
-            duration = DurationOptions[0],
-            selectedDuration = selectedDuration,
-            enabled = enabled,
-            modifier = Modifier.weight(1f),
-            onSelect = onSelect,
-        )
-        DurationButton(
-            duration = DurationOptions[1],
-            selectedDuration = selectedDuration,
-            enabled = enabled,
-            modifier = Modifier.weight(1f),
-            onSelect = onSelect,
-        )
-        DurationButton(
-            duration = DurationOptions[2],
-            selectedDuration = selectedDuration,
-            enabled = enabled,
-            modifier = Modifier.weight(1f),
-            onSelect = onSelect,
-        )
+        DurationOptions.forEach { duration ->
+            DurationButton(
+                duration = duration,
+                selectedDuration = selectedDuration,
+                enabled = enabled,
+                modifier = Modifier.weight(1f),
+                onSelect = onSelect,
+            )
+        }
     }
 }
 
@@ -942,9 +999,12 @@ private fun WarmUpCounterScreen(
                             Spacer(modifier = Modifier.height(12.dp))
                             Text(
                                 text = stringResource(
-                                    R.string.minutes_announced_format,
-                                    warmUpState.lastAnnouncedMinute.coerceIn(0, MaxWarmUpCountMinutes),
-                                    MaxWarmUpCountMinutes,
+                                    if (warmUpState.finishSoundPlayed) {
+                                        R.string.warm_up_finish_sound_played
+                                    } else {
+                                        R.string.warm_up_finish_sound_waiting
+                                    },
+                                    formatElapsedTime(WarmUpFinishSoundSeconds),
                                 ),
                                 color = Color.White.copy(alpha = 0.92f),
                                 style = MaterialTheme.typography.bodyMedium,
@@ -1034,7 +1094,10 @@ private fun SunTimerScreen(
     }
 
     var phaseName by rememberSaveable { mutableStateOf(SunTimerPhase.IDLE.name) }
-    var secondsRemaining by rememberSaveable { mutableIntStateOf(SunTimerDurationSeconds) }
+    var selectedSunTimerDurationSeconds by rememberSaveable {
+        mutableIntStateOf(SunTimerOptions.first().durationSeconds)
+    }
+    var secondsRemaining by rememberSaveable { mutableIntStateOf(selectedSunTimerDurationSeconds) }
     var firstBeepPlayed by rememberSaveable { mutableStateOf(false) }
     var secondBeepPlayed by rememberSaveable { mutableStateOf(false) }
     var showCancelConfirmation by rememberSaveable { mutableStateOf(false) }
@@ -1042,6 +1105,9 @@ private fun SunTimerScreen(
 
     val phase = SunTimerPhase.valueOf(phaseName)
     val timerActive = phase == SunTimerPhase.RUNNING || phase == SunTimerPhase.PAUSED
+    val selectedSunTimerOption = SunTimerOptions.firstOrNull {
+        it.durationSeconds == selectedSunTimerDurationSeconds
+    } ?: SunTimerOptions.first()
     val timerTitle = when (phase) {
         SunTimerPhase.RUNNING -> stringResource(R.string.sun_timer_running_title)
         SunTimerPhase.PAUSED -> stringResource(R.string.paused_status_title)
@@ -1049,9 +1115,22 @@ private fun SunTimerScreen(
         SunTimerPhase.IDLE -> stringResource(R.string.sun_timer_title)
     }
 
+    fun selectSunTimerOption(option: SunTimerOption) {
+        if (timerActive) {
+            return
+        }
+
+        selectedSunTimerDurationSeconds = option.durationSeconds
+        secondsRemaining = option.durationSeconds
+        firstBeepPlayed = false
+        secondBeepPlayed = false
+        showCancelConfirmation = false
+        phaseName = SunTimerPhase.IDLE.name
+    }
+
     fun resetTimer() {
         audioPlayer.stopAll()
-        secondsRemaining = SunTimerDurationSeconds
+        secondsRemaining = selectedSunTimerOption.durationSeconds
         firstBeepPlayed = false
         secondBeepPlayed = false
         showCancelConfirmation = false
@@ -1060,7 +1139,7 @@ private fun SunTimerScreen(
 
     fun startTimer() {
         audioPlayer.stopAll()
-        secondsRemaining = SunTimerDurationSeconds
+        secondsRemaining = selectedSunTimerOption.durationSeconds
         firstBeepPlayed = false
         secondBeepPlayed = false
         showCancelConfirmation = false
@@ -1102,18 +1181,20 @@ private fun SunTimerScreen(
             return@LaunchedEffect
         }
 
+        val timerOption = selectedSunTimerOption
+
         try {
             audioPlayer.resumeAll()
             while (secondsRemaining > 0) {
                 delay(1000)
                 secondsRemaining -= 1
 
-                val elapsedSeconds = SunTimerDurationSeconds - secondsRemaining
-                if (!firstBeepPlayed && elapsedSeconds >= SunTimerFirstBeepElapsedSeconds) {
+                val elapsedSeconds = timerOption.durationSeconds - secondsRemaining
+                if (!firstBeepPlayed && elapsedSeconds >= timerOption.firstBeepElapsedSeconds) {
                     firstBeepPlayed = true
                     audioPlayer.playBeep()
                 }
-                if (!secondBeepPlayed && elapsedSeconds >= SunTimerSecondBeepElapsedSeconds) {
+                if (!secondBeepPlayed && elapsedSeconds >= timerOption.secondBeepElapsedSeconds) {
                     secondBeepPlayed = true
                     audioPlayer.playBeep()
                 }
@@ -1241,6 +1322,19 @@ private fun SunTimerScreen(
                                 }
                             }
                         } else {
+                            Text(
+                                text = stringResource(R.string.sun_timer_duration_label),
+                                color = SunTimerContent,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                textAlign = TextAlign.Center,
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            SunTimerDurationSelector(
+                                selectedDurationSeconds = selectedSunTimerOption.durationSeconds,
+                                onSelect = ::selectSunTimerOption,
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
                             Button(
                                 onClick = { startTimer() },
                                 modifier = Modifier
@@ -1284,6 +1378,41 @@ private fun SunTimerScreen(
                 }
             },
         )
+    }
+}
+
+@Composable
+private fun SunTimerDurationSelector(
+    selectedDurationSeconds: Int,
+    onSelect: (SunTimerOption) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        SunTimerOptions.forEach { option ->
+            val selected = option.durationSeconds == selectedDurationSeconds
+
+            Button(
+                onClick = { onSelect(option) },
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 48.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (selected) SunTimerContent else Color.White.copy(alpha = 0.64f),
+                    contentColor = if (selected) SunTimerBackground else SunTimerContent,
+                ),
+            ) {
+                Text(
+                    text = stringResource(
+                        R.string.sun_timer_duration_option_format,
+                        option.durationSeconds / 60,
+                    ),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
     }
 }
 

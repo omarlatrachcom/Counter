@@ -32,7 +32,7 @@ data class WarmUpSessionState(
     val warmUpElapsedSeconds: Int = 0,
     val lockedWarmUpSeconds: Int = 0,
     val countingElapsedSeconds: Int = 0,
-    val lastAnnouncedMinute: Int = 0,
+    val finishSoundPlayed: Boolean = false,
 )
 
 object WarmUpSessionStore {
@@ -53,7 +53,7 @@ class WarmUpForegroundService : Service() {
     private var warmUpStartRealtimeMs = 0L
     private var countingStartRealtimeMs = 0L
     private var lockedWarmUpSeconds = 0
-    private var lastAnnouncedMinute = 0
+    private var finishSoundPlayed = false
     private var isForegroundStarted = false
 
     override fun onCreate() {
@@ -100,14 +100,14 @@ class WarmUpForegroundService : Service() {
         warmUpStartRealtimeMs = SystemClock.elapsedRealtime()
         countingStartRealtimeMs = 0L
         lockedWarmUpSeconds = 0
-        lastAnnouncedMinute = 0
+        finishSoundPlayed = false
 
         val newState = WarmUpSessionState(
             stage = WarmUpStage.WARMING_UP,
             warmUpElapsedSeconds = 0,
             lockedWarmUpSeconds = 0,
             countingElapsedSeconds = 0,
-            lastAnnouncedMinute = 0,
+            finishSoundPlayed = false,
         )
         WarmUpSessionStore.set(newState)
         startOrUpdateForeground(newState)
@@ -121,7 +121,7 @@ class WarmUpForegroundService : Service() {
                     warmUpElapsedSeconds = elapsed,
                     lockedWarmUpSeconds = 0,
                     countingElapsedSeconds = 0,
-                    lastAnnouncedMinute = 0,
+                    finishSoundPlayed = false,
                 )
                 WarmUpSessionStore.set(updatedState)
                 updateNotification(updatedState)
@@ -140,14 +140,14 @@ class WarmUpForegroundService : Service() {
 
         lockedWarmUpSeconds = elapsedSecondsSince(warmUpStartRealtimeMs)
         countingStartRealtimeMs = SystemClock.elapsedRealtime()
-        lastAnnouncedMinute = 0
+        finishSoundPlayed = false
 
         val newState = WarmUpSessionState(
             stage = WarmUpStage.COUNTING,
             warmUpElapsedSeconds = lockedWarmUpSeconds,
             lockedWarmUpSeconds = lockedWarmUpSeconds,
             countingElapsedSeconds = 0,
-            lastAnnouncedMinute = 0,
+            finishSoundPlayed = false,
         )
         WarmUpSessionStore.set(newState)
         startOrUpdateForeground(newState)
@@ -155,18 +155,10 @@ class WarmUpForegroundService : Service() {
         tickerJob = serviceScope.launch {
             while (isActive) {
                 val countingElapsed = elapsedSecondsSince(countingStartRealtimeMs)
-                val currentMinute = countingElapsed / 60
 
-                if (currentMinute >= MaxWarmUpCountMinutes &&
-                    lastAnnouncedMinute < MaxWarmUpCountMinutes
-                ) {
-                    lastAnnouncedMinute = MaxWarmUpCountMinutes
+                if (!finishSoundPlayed && countingElapsed >= WarmUpFinishSoundSeconds) {
+                    finishSoundPlayed = true
                     audioPlayer.playFinished()
-                } else if (currentMinute > lastAnnouncedMinute &&
-                    currentMinute < MaxWarmUpCountMinutes
-                ) {
-                    lastAnnouncedMinute = currentMinute
-                    audioPlayer.playMinuteCount(currentMinute)
                 }
 
                 val updatedState = WarmUpSessionState(
@@ -174,7 +166,7 @@ class WarmUpForegroundService : Service() {
                     warmUpElapsedSeconds = lockedWarmUpSeconds,
                     lockedWarmUpSeconds = lockedWarmUpSeconds,
                     countingElapsedSeconds = countingElapsed,
-                    lastAnnouncedMinute = lastAnnouncedMinute,
+                    finishSoundPlayed = finishSoundPlayed,
                 )
                 WarmUpSessionStore.set(updatedState)
                 updateNotification(updatedState)
@@ -198,7 +190,7 @@ class WarmUpForegroundService : Service() {
                     warmUpElapsedSeconds = elapsedSecondsSince(warmUpStartRealtimeMs),
                     lockedWarmUpSeconds = 0,
                     countingElapsedSeconds = 0,
-                    lastAnnouncedMinute = 0,
+                    finishSoundPlayed = false,
                 )
 
                 WarmUpStage.COUNTING -> WarmUpSessionState(
@@ -206,7 +198,7 @@ class WarmUpForegroundService : Service() {
                     warmUpElapsedSeconds = lockedWarmUpSeconds,
                     lockedWarmUpSeconds = lockedWarmUpSeconds,
                     countingElapsedSeconds = elapsedSecondsSince(countingStartRealtimeMs),
-                    lastAnnouncedMinute = lastAnnouncedMinute,
+                    finishSoundPlayed = finishSoundPlayed,
                 )
 
                 else -> currentState.copy(stage = WarmUpStage.STOPPED)
@@ -410,21 +402,6 @@ private class WarmUpServiceAudioPlayer(
                 }
                 completedPlayer.release()
                 onMusicCompleted()
-            }
-            start()
-        }
-    }
-
-    fun playMinuteCount(minute: Int) {
-        stopVoice()
-
-        val resId = countSoundResForValue(minute) ?: return
-        voicePlayer = MediaPlayer.create(context, resId)?.apply {
-            setOnCompletionListener { completedPlayer ->
-                if (voicePlayer === completedPlayer) {
-                    voicePlayer = null
-                }
-                completedPlayer.release()
             }
             start()
         }
