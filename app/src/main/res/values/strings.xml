@@ -15,6 +15,10 @@
     <string name="reps_range_error">Reps must be between 1 and 20.</string>
     <string name="rep_duration_label">Rep duration</string>
     <string name="duration_option_format">%1$d sec</string>
+    <string name="custom_duration_minutes_label">Custom minutes</string>
+    <string name="custom_duration_minutes_support_text">Enter a value between 1 and 6, or use a button above.</string>
+    <string name="custom_duration_minutes_required_error">Enter a number between 1 and 6.</string>
+    <string name="custom_duration_minutes_range_error">Minutes must be between 1 and 6.</string>
     <string name="silent_counting_label">Silent counting</string>
     <string name="rest_between_reps_label">Rest between reps</string>
     <string name="start_button">Start</string>
@@ -36,6 +40,8 @@
     <string name="sun_timer_running_title">Timer Running</string>
     <string name="sun_timer_completed_title">Timer Complete</string>
     <string name="sun_timer_remaining_label">Time remaining</string>
+    <string name="sun_timer_duration_label">Timer length</string>
+    <string name="sun_timer_duration_option_format">%1$d min</string>
     <string name="sun_timer_cancel_dialog_title">Cancel this timer?</string>
     <string name="sun_timer_cancel_dialog_message">This will stop the timer and music.</string>
     <string name="sun_timer_confirm_cancel_button">Cancel timer</string>
@@ -43,11 +49,12 @@
     <string name="start_counter_button">Start Timer</string>
     <string name="warm_up_music_running_hint">Music is playing. Tap Start Timer when you are ready.</string>
     <string name="warm_up_counting_title">Timer Running</string>
-    <string name="warm_up_completed_title">20 Minutes Reached</string>
+    <string name="warm_up_completed_title">Timer Complete</string>
     <string name="warm_up_stopped_title">Session Stopped</string>
     <string name="warm_up_time_label">Warm-up time</string>
     <string name="counting_time_label">Timer time</string>
-    <string name="minutes_announced_format">Minutes announced: %1$d / %2$d</string>
+    <string name="warm_up_finish_sound_waiting">Finish sound at %1$s</string>
+    <string name="warm_up_finish_sound_played">Finish sound played at %1$s</string>
     <string name="warm_up_service_channel_name">Warm-up timer</string>
     <string name="warm_up_service_channel_description">Keeps the warm-up music and timer running in the background.</string>
     <string name="warm_up_notification_warming_up_title">Warm-up running</string>
