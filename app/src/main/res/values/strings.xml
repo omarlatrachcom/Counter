@@ -5,6 +5,7 @@
     <string name="counter_button">Counter</string>
     <string name="warm_up_counter_button">Warm Up Timer</string>
     <string name="sun_timer_button">Sun Timer</string>
+    <string name="sleep_button">Sleep</string>
     <string name="counter_title">Counter</string>
     <string name="warm_up_counter_title">Warm Up Timer</string>
     <string name="sun_timer_title">Sun Timer</string>
