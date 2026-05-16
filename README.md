@@ -2,11 +2,12 @@
 
 An Android workout timer app built with Kotlin and Jetpack Compose.
 
-The app currently includes three main flows:
+The app currently includes these main menu options:
 
 - `Counter`: a rep-based counter with optional voice counting, optional rest between reps, and a finish sound.
 - `Warm Up Timer`: a music-backed warm-up flow that can transition into a long-running silent timer.
 - `Sun Timer`: a 29-minute or 20-minute music-backed countdown with milestone beeps.
+- `Sleep`: a main-menu option that plays `music_3.mp3` once.
 
 ## Features
 
@@ -56,6 +57,7 @@ Current filenames used by the app:
 - `finished.mp3`
 - `music.mp3`
 - `music_2.mp3`
+- `music_3.mp3`
 
 Android resource naming rules matter:
 

@@ -167,6 +167,15 @@ private fun HomeScreen(
     onWarmUpCounterClick: () -> Unit,
     onSunTimerClick: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val sleepAudioPlayer = remember(context) { SleepAudioPlayer(context.applicationContext) }
+
+    DisposableEffect(sleepAudioPlayer) {
+        onDispose {
+            sleepAudioPlayer.release()
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -207,6 +216,11 @@ private fun HomeScreen(
             HomeButton(
                 text = stringResource(R.string.sun_timer_button),
                 onClick = onSunTimerClick,
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            HomeButton(
+                text = stringResource(R.string.sleep_button),
+                onClick = { sleepAudioPlayer.play() },
             )
         }
     }
@@ -1480,6 +1494,44 @@ private class WorkoutAudioPlayer(
         }
     }
 
+}
+
+private class SleepAudioPlayer(
+    private val context: Context,
+) {
+    private var mediaPlayer: MediaPlayer? = null
+
+    fun play() {
+        stop()
+        mediaPlayer = MediaPlayer.create(context, R.raw.music_3)?.apply {
+            setVolume(0.32f, 0.32f)
+            setLooping(false)
+            setOnCompletionListener { completedPlayer ->
+                if (mediaPlayer === completedPlayer) {
+                    mediaPlayer = null
+                }
+                completedPlayer.release()
+            }
+            start()
+        }
+    }
+
+    fun release() {
+        stop()
+    }
+
+    private fun stop() {
+        mediaPlayer?.let { player ->
+            player.setOnCompletionListener(null)
+            runCatching {
+                if (player.isPlaying) {
+                    player.stop()
+                }
+            }
+            player.release()
+        }
+        mediaPlayer = null
+    }
 }
 
 private class SunTimerAudioPlayer(
